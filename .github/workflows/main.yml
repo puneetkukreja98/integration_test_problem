@@ -40,9 +40,6 @@ jobs:
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
         run: |
-          echo "Waiting for simulator services to stabilize..."
-          sleep 30
-          
           flutter test integration_test/app_test.dart \
             -d $SIMULATOR_UDID \
             --ignore-timeouts \
