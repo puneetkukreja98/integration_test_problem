@@ -2,23 +2,23 @@ name: integration-tests-app-ci
 
 on:
   push:
-  workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   ios-integration-test:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
-      fail-fast: false
-      matrix:
-        parameter1: [1, 2, 3, 4, 5]
+        fail-fast: false
+        matrix:
+            # 20 runs
+            parameter1: [1,2,3,4,5,6,7,8,9,10]
+            parameter2: [1,2]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
-      - name: Set Flutter version from FVM
+      - name: Set Flutter version from FVM config file to environment variables
         id: fvm-config-action
         uses: kuhnroyal/flutter-fvm-config-action@fcdb62b682dade6f0d9e0c6eae6acc647ca8c31d
 
@@ -27,8 +27,7 @@ jobs:
           flutter-version: ${{ steps.fvm-config-action.outputs.FLUTTER_VERSION }}
           channel: ${{ steps.fvm-config-action.outputs.FLUTTER_CHANNEL }}
 
-      - name: Boot Simulator
-        uses: nilsreichardt/simulator-action@a7ad1bffe28e5354a2bce14fd9fe2ad125fc99bf
+      - uses: futureware-tech/simulator-action@6a2cef2c27540a25595e53c969fd85988700d451
         id: simulator
         with:
           wait_for_boot: true
@@ -39,23 +38,13 @@ jobs:
       - name: Run integration tests
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
+        # We use --ignore-timeouts to avoid the 12 minute timeout during the
+        # build. Flutter has a timeout of 12 minutes for the build, but building
+        # our iOS app takes longer. Using --ignore-timeouts is the current
+        # recommended workaround, see
+        # https://github.com/flutter/flutter/issues/105913#issuecomment-2770877374
         run: |
           flutter test integration_test/app_test.dart \
             -d $SIMULATOR_UDID \
             --ignore-timeouts \
             --verbose
-
-      - name: Collect Simulator Diagnostics
-        if: failure()
-        run: |
-          echo "Test failed or timed out. Collecting logs..."
-          xcrun simctl diagnose -p --no-archive
-          # Move the generated tarball to /tmp/ for the next step to find it
-          mv ~/Desktop/simctl_diagnose_*.tar.gz /tmp/ || true
-
-      - name: Upload Logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: simulator-diagnostics-${{ matrix.parameter1 }}
-          path: /tmp/simctl_diagnose_*.tar.gz
