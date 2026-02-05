@@ -9,7 +9,7 @@ permissions:
 jobs:
   ios-integration-test:
     # Using macos-26 as per the original issue report
-    runs-runs-on: macos-26
+    runs-on: macos-26
     timeout-minutes: 45 # Increased timeout to allow for diagnostics if it hangs
     strategy:
       fail-fast: false
