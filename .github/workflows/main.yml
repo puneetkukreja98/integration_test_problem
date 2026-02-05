@@ -3,31 +3,33 @@ name: integration-tests-app-ci
 on:
   push:
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   ios-integration-test:
-    runs-on: macos-26
-    timeout-minutes: 30
+    # Using macos-26 as per the original issue report
+    runs-runs-on: macos-26
+    timeout-minutes: 45 # Increased timeout to allow for diagnostics if it hangs
     strategy:
-        fail-fast: false
-        matrix:
-            # 20 runs
-            parameter1: [1,2,3,4,5,6,7,8,9,10]
-            parameter2: [1,2]
+      fail-fast: false
+      matrix:
+        # Reduced to 5 runs for your initial testing to save minutes
+        parameter1: [1, 2, 3, 4, 5]
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: actions/checkout@v4
 
-      - name: Set Flutter version from FVM config file to environment variables
+      # Using FVM config as per the reporter's setup
+      - name: Set Flutter version from FVM
         id: fvm-config-action
-        uses: kuhnroyal/flutter-fvm-config-action@fcdb62b682dade6f0d9e0c6eae6acc647ca8c31d
+        uses: kuhnroyal/flutter-fvm-config-action@v3
 
-      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ steps.fvm-config-action.outputs.FLUTTER_VERSION }}
           channel: ${{ steps.fvm-config-action.outputs.FLUTTER_CHANNEL }}
 
-      - uses: nilsreichardt/simulator-action@a7ad1bffe28e5354a2bce14fd9fe2ad125fc99bf
+      - uses: nilsreichardt/simulator-action@v0.6.0
         id: simulator
         with:
           wait_for_boot: true
@@ -38,13 +40,29 @@ jobs:
       - name: Run integration tests
         env:
           SIMULATOR_UDID: ${{ steps.simulator.outputs.udid }}
-        # We use --ignore-timeouts to avoid the 12 minute timeout during the
-        # build. Flutter has a timeout of 12 minutes for the build, but building
-        # our iOS app takes longer. Using --ignore-timeouts is the current
-        # recommended workaround, see
-        # https://github.com/flutter/flutter/issues/105913#issuecomment-2770877374
         run: |
+          # 1. Added a 30s delay to ensure simulator services are fully ready
+          echo "Waiting for simulator services to stabilize..."
+          sleep 30
+          
+          # 2. Running with --verbose to capture why the VM Service connection fails
           flutter test integration_test/app_test.dart \
             -d $SIMULATOR_UDID \
             --ignore-timeouts \
             --verbose
+
+      # 3. New step: Collect diagnostics ONLY if the test hangs or fails
+      - name: Collect Simulator Diagnostics
+        if: failure()
+        run: |
+          echo "Test failed or timed out. Collecting logs..."
+          xcrun simctl diagnose -p --no-archive
+          # This creates a folder of logs we can upload as an artifact
+
+      # 4. Upload the logs so you can attach them to the GitHub Issue
+      - name: Upload Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-diagnostics-${{ matrix.parameter1 }}
+          path: /tmp/simctl_diagnose_*.tar.gz
